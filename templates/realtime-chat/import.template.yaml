@@ -1,0 +1,31 @@
+# NOTE: `envVariables` is NOT a valid service-level key in an import YAML — it is
+# silently ignored. Per-request personalization must go through `envSecrets`
+# (the only import-level env key), which also resolves ${otherservice_var} refs.
+#
+# Hostnames carry a per-job {{prefix}} so two concurrent jobs can share one target
+# project without colliding, and so hostname -> serviceStackId lookup stays unique.
+#
+# `${{{prefix}}db_hostname}` is not a typo: the outer `${...}` is Zerops' own
+# cross-service reference and `{{prefix}}` is ours, so with prefix=chatk3f9 this
+# renders to the literal `${chatk3f9db_hostname}` that Zerops expects.
+services:
+  - hostname: {{prefix}}db
+    type: postgresql:single@16
+    priority: 3
+
+  - hostname: {{prefix}}api
+    type: nodejs@22
+    priority: 2
+    envSecrets:
+      APP_TITLE: "{{appTitle}}"
+      DEFAULT_ROOM: "{{roomName}}"
+      THEME: "{{theme}}"
+      PGHOST: ${{{prefix}}db_hostname}
+      PGPORT: ${{{prefix}}db_port}
+      PGUSER: ${{{prefix}}db_user}
+      PGPASSWORD: ${{{prefix}}db_password}
+      PGDATABASE: ${{{prefix}}db_dbName}
+
+  - hostname: {{prefix}}web
+    type: static
+    priority: 1

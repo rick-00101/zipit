@@ -1,0 +1,33 @@
+# Zepit's own backend service, built from the REPOSITORY ROOT — not from backend/.
+#
+# The orchestrator shells out to zcli and reads templates/ and scripts/ at runtime,
+# so all three trees must ship together. A zerops.yaml inside backend/ cannot reach
+# its siblings, which is why this file lives here and the api is pushed with
+# `--working-dir <repo root> --setup zepitapi`.
+#
+# The frontend keeps its own zerops.yaml and is pushed from frontend/.
+zerops:
+  - setup: zepitapi
+    build:
+      base: nodejs@22
+      buildCommands:
+        - cd backend && npm ci --omit=dev
+        # Archetype templates ship as SOURCE. Their dependencies are installed by
+        # the target service's own build at deploy time, so any node_modules left
+        # here from local testing is dead weight in the upload.
+        - rm -rf templates/*/api/node_modules
+      deployFiles:
+        - backend
+        - templates
+        - scripts
+    run:
+      base: nodejs@22
+      prepareCommands:
+        # UNVERIFIED: the orchestrator shells out to `zcli`, so the runtime container
+        # must have it. This is the first thing to check on the first real deploy —
+        # if it fails, every job fails at the first shell-out.
+        - npm i -g @zerops/zcli
+      ports:
+        - port: 3000
+          httpSupport: true
+      start: node backend/src/index.js

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat</title>
+<script src="config.js"></script>
+<style>
+  :root { --bg:#faf9f7; --fg:#1a1a19; --muted:#6b6b68; --card:#fff; --line:#e5e3df; --accent:#3d5afe; }
+  html[data-theme="dark"] { --bg:#16161a; --fg:#ececec; --muted:#9a9a97; --card:#1f1f25; --line:#2e2e36; --accent:#8fa2ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; display:flex; justify-content:center; }
+  main { width:100%; max-width:720px; padding:24px 16px 16px; display:flex; flex-direction:column; height:100vh; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  h1 { font-size:19px; margin:0; letter-spacing:-.01em; }
+  .room { color:var(--muted); font-size:13px; }
+  #status { margin-left:auto; font-size:12px; color:var(--muted); }
+  #log { flex:1; overflow-y:auto; background:var(--card); border:1px solid var(--line);
+         border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .msg { display:flex; gap:8px; align-items:baseline; }
+  .who { font-weight:600; font-size:13px; flex-shrink:0; }
+  .body { word-break:break-word; }
+  .time { margin-left:auto; font-size:11px; color:var(--muted); flex-shrink:0; }
+  form { display:flex; gap:8px; margin-top:12px; }
+  input { flex:1; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+          background:var(--card); color:var(--fg); font:inherit; }
+  #who { max-width:120px; flex:0 0 auto; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title"></h1>
+    <span class="room" id="roomLabel"></span>
+    <span id="status">connecting…</span>
+  </header>
+  <div id="log"></div>
+  <form id="composer">
+    <input id="who" placeholder="name" maxlength="40" required>
+    <input id="text" placeholder="Message…" maxlength="2000" autocomplete="off" required>
+    <button type="submit" id="send" disabled>Send</button>
+  </form>
+</main>
+<script>
+  // config.js is generated per deployment by Zepit and pushed alongside this file,
+  // so the API URL is resolved before the push instead of at build time.
+  var CFG = window.ZEPIT_CONFIG || {};
+  var API = String(CFG.apiUrl || "").replace(/\/$/, "");
+  var ROOM = CFG.roomName || "general";
+  document.documentElement.dataset.theme = CFG.theme === "light" ? "light" : "dark";
+  document.title = CFG.appTitle || "Chat";
+  document.getElementById("title").textContent = CFG.appTitle || "Chat";
+  document.getElementById("roomLabel").textContent = "#" + ROOM;
+
+  var log = document.getElementById("log");
+  var status = document.getElementById("status");
+  var send = document.getElementById("send");
+
+  function render(m) {
+    var row = document.createElement("div");
+    row.className = "msg";
+    var who = document.createElement("span");
+    who.className = "who";
+    who.textContent = m.author + ":";
+    var body = document.createElement("span");
+    body.className = "body";
+    body.textContent = m.body;
+    var time = document.createElement("span");
+    time.className = "time";
+    time.textContent = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    row.append(who, body, time);
+    log.append(row);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  fetch(API + "/api/messages?room=" + encodeURIComponent(ROOM))
+    .then(function (r) { return r.json(); })
+    .then(function (rows) { rows.forEach(render); })
+    .catch(function () { status.textContent = "history unavailable"; });
+
+  var ws = new WebSocket(API.replace(/^http/, "ws"));
+  ws.onopen = function () {
+    status.textContent = "connected";
+    send.disabled = false;
+    ws.send(JSON.stringify({ type: "join", room: ROOM }));
+  };
+  ws.onclose = function () { status.textContent = "disconnected"; send.disabled = true; };
+  ws.onerror = function () { status.textContent = "connection error"; };
+  ws.onmessage = function (e) {
+    var m = JSON.parse(e.data);
+    if (m.type === "message") render(m);
+  };
+
+  document.getElementById("composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var who = document.getElementById("who");
+    var text = document.getElementById("text");
+    ws.send(JSON.stringify({ author: who.value, body: text.value }));
+    text.value = "";
+  });
+</script>
+</body>
+</html>

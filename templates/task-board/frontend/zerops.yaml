@@ -1,0 +1,9 @@
+zerops:
+  - setup: taskweb
+    build:
+      base: alpine@3.20
+      deployFiles:
+        - index.html
+        - config.js
+    run:
+      base: static

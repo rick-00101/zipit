@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zepit — describe an app, get a live one</title>
+<script src="config.js"></script>
+<style>
+  :root { --bg:#faf9f7; --fg:#1a1a19; --muted:#6b6b68; --card:#fff; --line:#e5e3df;
+          --accent:#3d5afe; --ok:#0a7c42; --bad:#b3261e; --warn:#8a6100;
+          --okbg:#eaf6ef; --warnbg:#fbf3e2; --badbg:#fbecea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16161a; --fg:#ececec; --muted:#9a9a97; --card:#1f1f25; --line:#2e2e36;
+            --accent:#8fa2ff; --ok:#5bd18f; --bad:#ff8a80; --warn:#e0b352;
+            --okbg:#16281f; --warnbg:#2a2318; --badbg:#2c1b1a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif; display:flex; justify-content:center; }
+  main { width:100%; max-width:840px; padding:32px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.02em; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+          color:var(--muted); margin-bottom:5px; }
+  .field { margin-bottom:14px; }
+  input, select, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+          background:var(--bg); color:var(--fg); font:inherit; }
+  textarea { resize:vertical; min-height:76px; }
+  button { padding:11px 20px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); font-weight:500; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:180px; }
+  .arch { border:1px solid var(--line); border-radius:10px; padding:12px; cursor:pointer; margin-bottom:8px; }
+  .arch.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .arch h3 { margin:0 0 3px; font-size:14px; }
+  .arch p { margin:0; font-size:13px; color:var(--muted); }
+  .svcs { margin-top:7px; display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font-size:11px; padding:2px 8px; border:1px solid var(--line); border-radius:20px; color:var(--muted); }
+  .state { display:inline-block; font-size:12px; font-weight:600; padding:3px 10px; border-radius:20px;
+           border:1px solid var(--line); }
+  .state.live { color:var(--ok); } .state.failed { color:var(--bad); }
+  .state.queued, .state.provisioning, .state.building { color:var(--warn); }
+  .steps { list-style:none; padding:0; margin:14px 0 0; font-size:13px; }
+  .steps li { padding:5px 0; border-top:1px solid var(--line); display:flex; gap:10px; }
+  .steps time { color:var(--muted); flex:0 0 62px; font-variant-numeric:tabular-nums; }
+  .urls a { display:block; margin-top:6px; font-weight:600; color:var(--accent); word-break:break-all; }
+  .err { color:var(--bad); font-size:13px; white-space:pre-wrap; word-break:break-word;
+         max-height:180px; overflow:auto; margin-top:10px; }
+  .hint { font-size:12px; color:var(--muted); margin-top:10px; }
+  .link { color:var(--accent); cursor:pointer; text-decoration:underline; font-size:12px; }
+  /* The verdict banner is the whole point of the redesign: an out-of-catalogue request
+     has to look like a deliberate answer, not like the app quietly picking something. */
+  .verdict { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:13px; }
+  /* Only the heading is a block — `b` stays inline so an archetype name can sit inside
+     a sentence without breaking the line. */
+  .verdict .head { display:block; font-size:14px; margin-bottom:3px; font-weight:700; }
+  .verdict.ok   { border-color:var(--ok);   background:var(--okbg); }
+  .verdict.warn { border-color:var(--warn); background:var(--warnbg); }
+  .verdict.bad  { border-color:var(--bad);  background:var(--badbg); }
+  .verdict.ok   .head { color:var(--ok); }
+  .verdict.warn .head { color:var(--warn); }
+  .verdict.bad  .head { color:var(--bad); }
+  .model { font-size:11px; color:var(--muted); margin-top:8px; }
+  .pick { margin-top:12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Zepit</h1>
+  <p class="sub">Describe the app you want. Zepit matches it to a pre-built archetype, provisions the
+    infrastructure on Zerops, deploys it, verifies it actually works, and hands back a live URL.
+    No code is generated at runtime.</p>
+
+  <div class="card">
+    <div class="field" style="margin-bottom:0">
+      <label for="desc">What do you want to deploy?</label>
+      <textarea id="desc" placeholder="e.g. a dark-themed chat room for my support team"></textarea>
+      <div class="row" style="margin-top:10px; align-items:center">
+        <button id="match" style="flex:0 0 auto">Match it</button>
+        <div class="hint" id="matchHint" style="flex:1; margin-top:0">
+          Zepit reads your description and picks the archetype that fits.
+        </div>
+      </div>
+      <div class="hint"><span class="link" id="manualToggle">or choose an archetype yourself</span></div>
+    </div>
+    <div id="manual" style="display:none; margin-top:14px">
+      <label>Available archetypes</label>
+      <div id="archs"></div>
+    </div>
+  </div>
+
+  <div class="card" id="choiceCard" style="display:none">
+    <div id="verdict"></div>
+    <div id="fields"></div>
+    <div class="row" style="align-items:center">
+      <button id="go" style="flex:0 0 auto">Deploy</button>
+      <div class="hint" id="goHint" style="flex:1; margin-top:0"></div>
+    </div>
+  </div>
+
+  <div class="card" id="jobCard" style="display:none">
+    <div class="row" style="align-items:center">
+      <div style="flex:0 0 auto"><span class="state" id="state">queued</span></div>
+      <div style="flex:1; color:var(--muted); font-size:13px" id="stepLabel"></div>
+    </div>
+    <div class="urls" id="urls"></div>
+    <div class="err" id="err" style="display:none"></div>
+    <ul class="steps" id="steps"></ul>
+  </div>
+
+  <div class="card">
+    <label>Recent deploys</label>
+    <div id="history" style="font-size:13px; color:var(--muted)">none yet</div>
+  </div>
+</main>
+
+<script>
+  // Same convention as the archetype templates: when Zepit's frontend is deployed as
+  // its own static service, config.js is generated with the backend's resolved URL.
+  // Served from the backend in local dev, same-origin is correct.
+  var CFG = window.ZEPIT_CONFIG || {};
+  var API = String(CFG.apiUrl || "").replace(/\/$/, "");
+
+  var archs = [], selected = null, poll = null, lastMatch = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  function archById(id) { return archs.find(function (x) { return x.id === id; }); }
+
+  function setManual(on) {
+    $("manual").style.display = on ? "" : "none";
+    $("manualToggle").textContent = on ? "hide the archetype list" : "or choose an archetype yourself";
+  }
+
+  function renderArchs() {
+    $("archs").innerHTML = archs.map(function (a) {
+      return '<div class="arch' + (selected === a.id ? ' sel' : '') + '" data-id="' + a.id + '">' +
+        "<h3>" + esc(a.id) + "</h3><p>" + esc(a.description) + "</p>" +
+        '<div class="svcs">' + a.services.map(function (s) {
+          return '<span class="chip">' + esc(s.type || s.role) + "</span>";
+        }).join("") + "</div></div>";
+    }).join("");
+  }
+
+  function renderFields() {
+    var a = archById(selected);
+    if (!a) { $("fields").innerHTML = ""; return; }
+    $("fields").innerHTML = '<div class="row">' + Object.keys(a.fields).map(function (name) {
+      var f = a.fields[name];
+      var input = f.type === "enum"
+        ? '<select id="f_' + name + '">' + f.values.map(function (v) {
+            return '<option' + (v === f.default ? " selected" : "") + ">" + esc(v) + "</option>";
+          }).join("") + "</select>"
+        : '<input id="f_' + name + '" value="' + esc(f.default || "") +
+          '" maxlength="' + (f.maxLength || 100) + '">';
+      return '<div class="field"><label for="f_' + name + '">' + esc(name) + "</label>" + input + "</div>";
+    }).join("") + "</div>";
+  }
+
+  // One card renders every way an archetype can get chosen. `m` is null when the user
+  // picked from the list themselves; otherwise it carries the model's own grade of how
+  // well its choice actually fits, which is what drives the tone here.
+  function showChoice(m) {
+    var a = archById(selected);
+    if (!a) return;
+    var grade = m && m.match;
+    var svcs = '<div class="svcs">' + a.services.map(function (s) {
+      return '<span class="chip">' + esc(s.type || s.role) + "</span>";
+    }).join("") + "</div>";
+
+    var cls = "ok", head, body;
+    if (!m) {
+      head = "Deploying " + esc(a.id);
+      body = esc(a.description);
+    } else if (grade === "none") {
+      cls = "bad";
+      head = "Zepit can't build " + esc(m.requested || "that") + " yet";
+      body = "Zepit only deploys apps it has already built and tested — it doesn't write code " +
+             "on the fly, which is why every URL it returns is verified before you get it. " +
+             "Nothing in the library matches this one.<br><br>Pick another archetype from the " +
+             "list above, or deploy the closest thing — <b>" + esc(a.id) + "</b> — and see what it does.";
+    } else if (grade === "partial") {
+      cls = "warn";
+      head = "Partial match — " + esc(a.id);
+      body = esc(m.reasoning);
+    } else {
+      head = "Matched " + esc(a.id);
+      body = esc(m.reasoning);
+    }
+
+    $("verdict").className = "verdict " + cls;
+    $("verdict").innerHTML = '<span class="head">' + head + "</span>" + body + svcs +
+      (m ? '<div class="model">graded by ' + esc(m.model) + "</div>" : "");
+
+    $("go").textContent = grade === "none" ? "Deploy " + a.id + " anyway" : "Deploy";
+    $("go").className = grade === "none" ? "ghost" : "";
+    $("goHint").textContent = grade === "none"
+      ? "It won't be what you asked for."
+      : "Provisions real services on Zerops, then verifies them.";
+
+    renderFields();
+    $("choiceCard").style.display = "";
+    // A no-match is the one case where the catalogue helps rather than shrinks the
+    // product: shown as the answer to a question, not as the opening menu.
+    if (grade === "none") { setManual(true); renderArchs(); }
+  }
+
+  $("manualToggle").addEventListener("click", function () {
+    var showing = $("manual").style.display !== "none";
+    setManual(!showing);
+    if (!showing) renderArchs();
+  });
+
+  $("archs").addEventListener("click", function (e) {
+    var el = e.target.closest(".arch");
+    if (!el) return;
+    selected = el.getAttribute("data-id");
+    lastMatch = null;
+    renderArchs();
+    showChoice(null);
+  });
+
+  function collectFields() {
+    var a = archById(selected);
+    var out = {};
+    Object.keys(a.fields).forEach(function (n) { out[n] = $("f_" + n).value; });
+    return out;
+  }
+
+  function renderJob(j) {
+    $("jobCard").style.display = "";
+    $("state").textContent = j.status;
+    $("state").className = "state " + j.status;
+    $("stepLabel").textContent = j.step || "";
+
+    var urls = "";
+    if (j.app_url) urls += '<a href="' + esc(j.app_url) + '" target="_blank">Open the app → ' + esc(j.app_url) + "</a>";
+    if (j.api_url) urls += '<a href="' + esc(j.api_url) + '/healthz" target="_blank">API health → ' + esc(j.api_url) + "/healthz</a>";
+    $("urls").innerHTML = urls;
+
+    if (j.error) { $("err").style.display = ""; $("err").textContent = j.error; }
+    else { $("err").style.display = "none"; }
+
+    $("steps").innerHTML = (j.log || []).map(function (l) {
+      return "<li><time>" + esc(l.at.slice(11, 19)) + "</time><span>" + esc(l.message) + "</span></li>";
+    }).reverse().join("");
+  }
+
+  function watch(id) {
+    clearInterval(poll);
+    poll = setInterval(function () {
+      fetch(API + "/api/jobs/" + id).then(function (r) { return r.json(); }).then(function (j) {
+        renderJob(j);
+        if (j.status === "live" || j.status === "failed") { clearInterval(poll); loadHistory(); $("go").disabled = false; }
+      });
+    }, 2000);
+  }
+
+  $("go").addEventListener("click", function () {
+    if (!selected) return;
+    $("go").disabled = true;
+    fetch(API + "/api/deploy", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archetype: selected, description: $("desc").value, fields: collectFields() })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) { $("go").disabled = false; alert(j.error); return; }
+      renderJob({ status: j.status, step: "", log: [] });
+      watch(j.id);
+    });
+  });
+
+  $("match").addEventListener("click", function () {
+    var desc = $("desc").value.trim();
+    if (!desc) { $("matchHint").textContent = "Describe the app first."; return; }
+    $("match").disabled = true;
+    $("matchHint").textContent = "Reading your description…";
+    fetch(API + "/api/classify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description: desc })
+    }).then(function (r) { return r.json(); }).then(function (m) {
+      $("match").disabled = false;
+      if (m.error) { $("matchHint").textContent = "Couldn't match: " + m.error; return; }
+      $("matchHint").textContent = m.match === "none"
+        ? "No archetype fits that one — see below."
+        : "Matched in one call. Edit anything below before deploying.";
+      selected = m.archetype;
+      lastMatch = m;
+      renderArchs();
+      showChoice(m);
+      // Overwrite the field inputs with the model's values; the user can still change
+      // them. renderFields() ran inside showChoice(), so the inputs exist by now.
+      Object.keys(m.fields || {}).forEach(function (n) {
+        var el = $("f_" + n);
+        if (el) el.value = m.fields[n];
+      });
+      $("choiceCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }).catch(function (e) {
+      $("match").disabled = false;
+      $("matchHint").textContent = "Couldn't match: " + e.message;
+    });
+  });
+
+  function loadHistory() {
+    fetch(API + "/api/jobs").then(function (r) { return r.json(); }).then(function (list) {
+      if (!list.length) return;
+      $("history").innerHTML = list.slice(0, 8).map(function (j) {
+        var link = j.app_url ? ' — <a href="' + esc(j.app_url) + '" target="_blank">' + esc(j.app_url) + "</a>" : "";
+        return '<div><span class="state ' + j.status + '">' + j.status + "</span> " +
+               esc(j.archetype) + " · " + esc(j.created_at.slice(0, 19).replace("T", " ")) + link + "</div>";
+      }).join("");
+    });
+  }
+
+  // Load the catalogue but do not render it: nothing selected, nothing shown, so the
+  // first impression is a description box rather than a three-item menu.
+  fetch(API + "/api/archetypes").then(function (r) { return r.json(); }).then(function (list) {
+    archs = list;
+  });
+  loadHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+zerops:
+  - setup: taskapi
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm ci --omit=dev
+      deployFiles:
+        - server.js
+        - package.json
+        - package-lock.json
+        - node_modules
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      start: npm start

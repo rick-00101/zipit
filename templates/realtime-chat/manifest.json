@@ -1,0 +1,54 @@
+{
+  "id": "realtime-chat",
+  "description": "Chat app with rooms and persistent message history: static frontend + Express/WebSockets API + PostgreSQL.",
+  "hostnamePrefix": "chat",
+  "services": [
+    {
+      "role": "database",
+      "hostname": "{{prefix}}db",
+      "type": "postgresql:single@16"
+    },
+    {
+      "role": "api",
+      "hostname": "{{prefix}}api",
+      "type": "nodejs@22",
+      "dir": "api",
+      "subdomain": true,
+      "setup": "chatapi"
+    },
+    {
+      "role": "frontend",
+      "hostname": "{{prefix}}web",
+      "type": "static",
+      "dir": "frontend",
+      "subdomain": true,
+      "generateConfig": "config.js",
+      "setup": "chatweb"
+    }
+  ],
+  "fields": {
+    "appTitle": {
+      "type": "string",
+      "maxLength": 40,
+      "default": "Zepit Chat"
+    },
+    "roomName": {
+      "type": "string",
+      "maxLength": 30,
+      "default": "general"
+    },
+    "theme": {
+      "type": "enum",
+      "values": [
+        "light",
+        "dark"
+      ],
+      "default": "dark"
+    }
+  },
+  "healthCheck": {
+    "script": "verify-realtime-chat.js",
+    "type": "websocket",
+    "description": "GET /healthz on the api subdomain must return archetype=realtime-chat, then a WebSocket upgrade must succeed and echo a posted message back."
+  }
+}

@@ -1,0 +1,45 @@
+# Zepit's OWN three services — the submission itself, not something Zepit provisions.
+#
+# Import this into a fresh, clean project (the `Zip-it` sandbox stays throwaway).
+# Same two rules as every archetype: personalization and secrets go through
+# `envSecrets`, and subdomains are enabled by zcli after the first push, never here.
+#
+# NOTE the ZEPIT_ prefix on the Zerops credentials. Zerops reserves the `ZEROPS_`
+# prefix for its own injected variables and REJECTS THE WHOLE IMPORT if a custom
+# variable uses it (`userDataZeropsPrefixForbidden`). The backend reads either name.
+#
+# The credentials are left empty: fill them in the Zerops GUI after import so the PAT
+# is never committed. Zepit uses it to provision on the user's behalf — disclose to
+# judges that this is a single demo credential, not multi-tenant auth.
+services:
+  - hostname: zepitdb
+    type: postgresql:single@16
+    priority: 3
+
+  - hostname: zepitapi
+    type: nodejs@22
+    priority: 2
+    # One container only. The worker is deliberately serial because zcli holds a
+    # single machine-wide credential; two containers would each run their own worker
+    # loop and push concurrently under the same PAT.
+    minContainers: 1
+    maxContainers: 1
+    envSecrets:
+      PGHOST: ${zepitdb_hostname}
+      PGPORT: ${zepitdb_port}
+      PGUSER: ${zepitdb_user}
+      PGPASSWORD: ${zepitdb_password}
+      PGDATABASE: ${zepitdb_dbName}
+      # Fill these in the GUI after import (Service → Environment variables → secret):
+      ZEPIT_ZEROPS_TOKEN: ""
+      ZEPIT_ZEROPS_PROJECT_ID: "BRxBWkuXRni22hMwaiKR0g"
+      # Archetype classifier: set ONE of these. The provider follows the key.
+      GEMINI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      # The UI is its own static service here, so the backend must not also serve it.
+      ZEPIT_SERVE_UI: "false"
+      ZEPIT_ARCHETYPE: "realtime-chat"
+
+  - hostname: zepitweb
+    type: static
+    priority: 1

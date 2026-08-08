@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Links</title>
+<script src="config.js"></script>
+<style>
+  :root { --bg:#faf9f7; --fg:#1a1a19; --muted:#6b6b68; --card:#fff; --line:#e5e3df; --accent:#3d5afe;
+          --hit:#0f7a4a; --hitbg:#e7f5ee; --miss:#9a6b00; --missbg:#fdf3dc; }
+  html[data-theme="dark"] { --bg:#16161a; --fg:#ececec; --muted:#9a9a97; --card:#1f1f25; --line:#2e2e36;
+          --accent:#8fa2ff; --hit:#6ee7a8; --hitbg:#12301f; --miss:#f0c674; --missbg:#33280f; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; display:flex; justify-content:center; }
+  main { width:100%; max-width:820px; padding:24px 16px 16px; display:flex; flex-direction:column; min-height:100vh; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
+  h1 { font-size:19px; margin:0; letter-spacing:-.01em; }
+  .owner { color:var(--muted); font-size:13px; }
+  #status { margin-left:auto; font-size:12px; color:var(--muted); }
+  .sub { color:var(--muted); font-size:12.5px; margin-bottom:14px; }
+  form { display:flex; gap:8px; margin-bottom:6px; flex-wrap:wrap; }
+  input { padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+          background:var(--card); color:var(--fg); font:inherit; }
+  #url { flex:1; min-width:220px; }
+  #slug { width:130px; flex:0 0 auto; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  #err { color:#d34; font-size:13px; min-height:19px; margin-bottom:8px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:9px; }
+  .row1 { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .short { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:600; color:var(--accent);
+           text-decoration:none; word-break:break-all; }
+  .hits { font-size:12px; color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .target { color:var(--muted); font-size:12.5px; word-break:break-all; margin-top:3px; }
+  .row2 { display:flex; gap:7px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  .row2 button { padding:3px 9px; font-size:11.5px; font-weight:600; background:transparent;
+                 color:var(--accent); border:1px solid var(--line); border-radius:5px; }
+  .row2 .del { color:var(--muted); margin-left:auto; }
+  .tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; letter-spacing:.03em; }
+  .tag.hit { color:var(--hit); background:var(--hitbg); }
+  .tag.miss { color:var(--miss); background:var(--missbg); }
+  .empty { color:var(--muted); font-size:13px; padding:10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title"></h1>
+    <span class="owner" id="ownerLabel"></span>
+    <span id="status">loading…</span>
+  </header>
+  <div class="sub">Shorten a URL, then hit <b>test resolve</b> twice — the first lookup reads
+    PostgreSQL, the second is served by the Valkey cache.</div>
+
+  <form id="composer">
+    <input id="url" type="url" placeholder="https://example.com/a/very/long/link" required>
+    <input id="slug" placeholder="custom (opt)" maxlength="32" autocomplete="off">
+    <button type="submit" id="add">Shorten</button>
+  </form>
+  <div id="err"></div>
+
+  <ul id="list"></ul>
+</main>
+<script>
+  // config.js is generated per deployment by Zepit and pushed alongside this file,
+  // so the API URL is resolved before the push instead of at build time.
+  var CFG = window.ZEPIT_CONFIG || {};
+  var API = String(CFG.apiUrl || "").replace(/\/$/, "");
+
+  document.documentElement.dataset.theme = CFG.theme === "light" ? "light" : "dark";
+  document.title = CFG.siteTitle || "Links";
+  document.getElementById("title").textContent = CFG.siteTitle || "Links";
+  document.getElementById("ownerLabel").textContent = CFG.ownerName ? "· " + CFG.ownerName : "";
+
+  var statusEl = document.getElementById("status");
+  var listEl = document.getElementById("list");
+  var errEl = document.getElementById("err");
+  var urlEl = document.getElementById("url");
+  var slugEl = document.getElementById("slug");
+
+  // Remembers the last resolve result per slug so the hit/miss tag survives a reload
+  // of the list, which happens every few seconds.
+  var probes = {};
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  function render(links) {
+    listEl.innerHTML = "";
+    if (!links.length) {
+      listEl.innerHTML = '<div class="empty">No links yet — shorten one above.</div>';
+      return;
+    }
+    links.forEach(function (l) {
+      var short = API + "/" + l.slug;
+      var p = probes[l.slug];
+      var tag = p ? '<span class="tag ' + p.cache + '">' +
+        (p.cache === "hit" ? "valkey hit" : "postgres read") + " · " + p.lookupMs + "ms</span>" : "";
+      var li = document.createElement("li");
+      li.innerHTML =
+        '<div class="row1"><a class="short" href="' + esc(short) + '" target="_blank" rel="noopener">/' +
+          esc(l.slug) + '</a>' + tag +
+          '<span class="hits">' + l.hits + (l.hits === 1 ? " click" : " clicks") + '</span></div>' +
+        '<div class="target">' + esc(l.url) + '</div>' +
+        '<div class="row2">' +
+          '<button data-test="' + esc(l.slug) + '">test resolve</button>' +
+          '<button data-copy="' + esc(short) + '">copy</button>' +
+          '<button class="del" data-del="' + esc(l.slug) + '">delete</button>' +
+        '</div>';
+      listEl.appendChild(li);
+    });
+  }
+
+  function load() {
+    return fetch(API + "/api/links")
+      .then(function (r) { return r.json(); })
+      .then(function (links) {
+        render(links);
+        statusEl.textContent = links.length + (links.length === 1 ? " link" : " links");
+      })
+      .catch(function (e) { statusEl.textContent = "offline — " + e.message; });
+  }
+
+  listEl.addEventListener("click", function (e) {
+    var test = e.target.getAttribute("data-test");
+    var copy = e.target.getAttribute("data-copy");
+    var del = e.target.getAttribute("data-del");
+
+    if (test) {
+      e.target.disabled = true;
+      fetch(API + "/api/resolve/" + encodeURIComponent(test))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { probes[test] = d; return load(); })
+        .catch(function (err) { errEl.textContent = err.message; })
+        .then(function () { e.target.disabled = false; });
+    } else if (copy) {
+      navigator.clipboard.writeText(copy).then(function () {
+        var was = e.target.textContent;
+        e.target.textContent = "copied";
+        setTimeout(function () { e.target.textContent = was; }, 1200);
+      });
+    } else if (del) {
+      fetch(API + "/api/links/" + encodeURIComponent(del), { method: "DELETE" })
+        .then(function () { delete probes[del]; return load(); });
+    }
+  });
+
+  document.getElementById("composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    errEl.textContent = "";
+    fetch(API + "/api/links", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: urlEl.value, slug: slugEl.value })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) { errEl.textContent = res.body.error || "could not shorten that"; return; }
+        urlEl.value = "";
+        slugEl.value = "";
+        return load();
+      })
+      .catch(function (err) { errEl.textContent = err.message; });
+  });
+
+  load();
+  setInterval(load, 5000);
+</script>
+</body>
+</html>

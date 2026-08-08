@@ -1,0 +1,44 @@
+{
+  "id": "link-shortener",
+  "description": "URL shortener with click tracking, backed by PostgreSQL with a Valkey cache in front of the resolve path: static frontend + Express REST API + PostgreSQL + Valkey.",
+  "hostnamePrefix": "link",
+  "services": [
+    {
+      "role": "database",
+      "hostname": "{{prefix}}db",
+      "type": "postgresql:single@16"
+    },
+    {
+      "role": "cache",
+      "hostname": "{{prefix}}kv",
+      "type": "valkey@7.2"
+    },
+    {
+      "role": "api",
+      "hostname": "{{prefix}}api",
+      "type": "nodejs@22",
+      "dir": "api",
+      "subdomain": true,
+      "setup": "linkapi"
+    },
+    {
+      "role": "frontend",
+      "hostname": "{{prefix}}web",
+      "type": "static",
+      "dir": "frontend",
+      "subdomain": true,
+      "generateConfig": "config.js",
+      "setup": "linkweb"
+    }
+  ],
+  "fields": {
+    "siteTitle": { "type": "string", "maxLength": 40, "default": "Zepit Links" },
+    "ownerName": { "type": "string", "maxLength": 30, "default": "the team" },
+    "theme": { "type": "enum", "values": ["light", "dark"], "default": "dark" }
+  },
+  "healthCheck": {
+    "script": "verify-link-shortener.js",
+    "type": "rest",
+    "description": "GET /healthz must report archetype=link-shortener with db and cache both up; a created link must resolve as a cache MISS then a cache HIT, redirect with a real 302, count its clicks, and be gone from BOTH stores after deletion."
+  }
+}

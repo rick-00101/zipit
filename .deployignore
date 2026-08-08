@@ -1,0 +1,16 @@
+# `zcli service push --no-git` uploads the entire working directory as-is, so
+# .gitignore is not consulted — without this file, backend/.env (PAT + Gemini key) is
+# uploaded and, because `deployFiles` includes `backend`, lands on disk in the running
+# container. Credentials belong in Zerops' env, not in the artefact.
+.env
+*.env
+!.env.example
+
+# Generated per-job working copies — never source, and not under deployFiles.
+.jobs/
+
+# DO NOT add node_modules here. This file is applied a second time when `deployFiles`
+# is collected AFTER the build, so excluding it strips the `npm ci` output out of the
+# artefact and the service dies on `Cannot find module 'express'`. Verified the hard
+# way 2026-08-08. Uploading the local node_modules is wasteful but harmless; the
+# build's `rm -rf templates/*/api/node_modules` handles the templates.

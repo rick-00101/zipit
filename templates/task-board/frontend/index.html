@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<script src="config.js"></script>
+<style>
+  :root { --bg:#faf9f7; --fg:#1a1a19; --muted:#6b6b68; --card:#fff; --line:#e5e3df; --accent:#3d5afe; }
+  html[data-theme="dark"] { --bg:#16161a; --fg:#ececec; --muted:#9a9a97; --card:#1f1f25; --line:#2e2e36; --accent:#8fa2ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; display:flex; justify-content:center; }
+  main { width:100%; max-width:1000px; padding:24px 16px 16px; display:flex; flex-direction:column; min-height:100vh; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+  h1 { font-size:19px; margin:0; letter-spacing:-.01em; }
+  .owner { color:var(--muted); font-size:13px; }
+  #status { margin-left:auto; font-size:12px; color:var(--muted); }
+  form { display:flex; gap:8px; margin-bottom:14px; }
+  input { flex:1; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+          background:var(--card); color:var(--fg); font:inherit; }
+  #who { max-width:120px; flex:0 0 auto; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff;
+           font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; align-items:start; }
+  @media (max-width:720px) { .cols { grid-template-columns:1fr; } }
+  .col { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .col h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+            margin:0 0 10px; display:flex; justify-content:space-between; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:9px 10px; margin-bottom:8px; }
+  .card .t { word-break:break-word; }
+  .meta { display:flex; gap:6px; align-items:center; margin-top:6px; font-size:11px; color:var(--muted); }
+  .meta button { padding:2px 7px; font-size:11px; font-weight:600; background:transparent;
+                 color:var(--accent); border:1px solid var(--line); border-radius:5px; }
+  .meta .del { color:var(--muted); margin-left:auto; }
+  .empty { color:var(--muted); font-size:13px; padding:4px 0 2px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title"></h1>
+    <span class="owner" id="ownerLabel"></span>
+    <span id="status">loading…</span>
+  </header>
+
+  <form id="composer">
+    <input id="who" placeholder="name" maxlength="40" required>
+    <input id="text" placeholder="Add a card…" maxlength="200" autocomplete="off" required>
+    <button type="submit" id="add">Add</button>
+  </form>
+
+  <div class="cols" id="cols"></div>
+</main>
+<script>
+  // config.js is generated per deployment by Zepit and pushed alongside this file,
+  // so the API URL is resolved before the push instead of at build time.
+  var CFG = window.ZEPIT_CONFIG || {};
+  var API = String(CFG.apiUrl || "").replace(/\/$/, "");
+  var COLUMNS = [["todo","To do"],["doing","Doing"],["done","Done"]];
+
+  document.documentElement.dataset.theme = CFG.theme === "light" ? "light" : "dark";
+  document.title = CFG.boardTitle || "Board";
+  document.getElementById("title").textContent = CFG.boardTitle || "Board";
+  document.getElementById("ownerLabel").textContent = CFG.ownerName ? "· " + CFG.ownerName : "";
+
+  var statusEl = document.getElementById("status");
+  var colsEl = document.getElementById("cols");
+  var whoEl = document.getElementById("who");
+  var textEl = document.getElementById("text");
+
+  whoEl.value = localStorage.getItem("zepit-who") || "";
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  function render(tasks) {
+    colsEl.innerHTML = "";
+    COLUMNS.forEach(function (pair) {
+      var key = pair[0], label = pair[1];
+      var mine = tasks.filter(function (t) { return t.col === key; });
+      var div = document.createElement("div");
+      div.className = "col";
+      div.innerHTML = "<h2><span>" + label + "</span><span>" + mine.length + "</span></h2>" +
+        (mine.length ? "" : '<div class="empty">Nothing here yet.</div>') +
+        mine.map(function (t) {
+          var back = key !== "todo" ? '<button data-move="' + t.id + '" data-to="' +
+            COLUMNS[COLUMNS.findIndex(function (p) { return p[0] === key; }) - 1][0] + '">←</button>' : "";
+          var fwd = key !== "done" ? '<button data-move="' + t.id + '" data-to="' +
+            COLUMNS[COLUMNS.findIndex(function (p) { return p[0] === key; }) + 1][0] + '">→</button>' : "";
+          return '<div class="card"><div class="t">' + esc(t.title) + '</div>' +
+                 '<div class="meta">' + back + fwd + "<span>" + esc(t.author) + "</span>" +
+                 '<button class="del" data-del="' + t.id + '">delete</button></div></div>';
+        }).join("");
+      colsEl.appendChild(div);
+    });
+  }
+
+  function load() {
+    return fetch(API + "/api/tasks")
+      .then(function (r) { return r.json(); })
+      .then(function (tasks) { render(tasks); statusEl.textContent = tasks.length + " cards"; })
+      .catch(function (e) { statusEl.textContent = "offline — " + e.message; });
+  }
+
+  colsEl.addEventListener("click", function (e) {
+    var move = e.target.getAttribute("data-move");
+    var del = e.target.getAttribute("data-del");
+    if (move) {
+      fetch(API + "/api/tasks/" + move, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ col: e.target.getAttribute("data-to") })
+      }).then(load);
+    } else if (del) {
+      fetch(API + "/api/tasks/" + del, { method: "DELETE" }).then(load);
+    }
+  });
+
+  document.getElementById("composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    localStorage.setItem("zepit-who", whoEl.value);
+    fetch(API + "/api/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: textEl.value, author: whoEl.value })
+    }).then(function () { textEl.value = ""; return load(); });
+  });
+
+  load();
+  setInterval(load, 4000);
+</script>
+</body>
+</html>

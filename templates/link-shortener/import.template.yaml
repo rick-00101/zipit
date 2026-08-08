@@ -1,0 +1,37 @@
+# Four services — this is the archetype that proves Zepit provisions infrastructure
+# rather than copying HTML. Same two rules as the others: personalization goes through
+# `envSecrets` (never `envVariables`, silently ignored at import level), and subdomains
+# are enabled by zcli after the first push, never by a flag here.
+#
+# `${{{prefix}}db_hostname}` is not a typo: the outer `${...}` is Zerops' own
+# cross-service reference and `{{prefix}}` is ours.
+#
+# VALKEY_URL uses `connectionString`, which is stored on the cache service as a literal
+# `redis://default:${password}@${hostname}.zerops:${port}` but arrives here fully
+# interpolated — verified 2026-08-08, see PIPELINE.md "Confirmed facts".
+services:
+  - hostname: {{prefix}}db
+    type: postgresql:single@16
+    priority: 4
+
+  - hostname: {{prefix}}kv
+    type: valkey@7.2
+    priority: 3
+
+  - hostname: {{prefix}}api
+    type: nodejs@22
+    priority: 2
+    envSecrets:
+      SITE_TITLE: "{{siteTitle}}"
+      OWNER_NAME: "{{ownerName}}"
+      THEME: "{{theme}}"
+      PGHOST: ${{{prefix}}db_hostname}
+      PGPORT: ${{{prefix}}db_port}
+      PGUSER: ${{{prefix}}db_user}
+      PGPASSWORD: ${{{prefix}}db_password}
+      PGDATABASE: ${{{prefix}}db_dbName}
+      VALKEY_URL: ${{{prefix}}kv_connectionString}
+
+  - hostname: {{prefix}}web
+    type: static
+    priority: 1

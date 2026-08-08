@@ -1,0 +1,4 @@
+node_modules/
+.env
+# Per-job working copies of templates — generated, never source.
+.jobs/

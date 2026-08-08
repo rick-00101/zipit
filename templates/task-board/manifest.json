@@ -1,0 +1,39 @@
+{
+  "id": "task-board",
+  "description": "Shared kanban board with todo/doing/done columns and persistent cards: static frontend + Express REST API + PostgreSQL.",
+  "hostnamePrefix": "task",
+  "services": [
+    {
+      "role": "database",
+      "hostname": "{{prefix}}db",
+      "type": "postgresql:single@16"
+    },
+    {
+      "role": "api",
+      "hostname": "{{prefix}}api",
+      "type": "nodejs@22",
+      "dir": "api",
+      "subdomain": true,
+      "setup": "taskapi"
+    },
+    {
+      "role": "frontend",
+      "hostname": "{{prefix}}web",
+      "type": "static",
+      "dir": "frontend",
+      "subdomain": true,
+      "generateConfig": "config.js",
+      "setup": "taskweb"
+    }
+  ],
+  "fields": {
+    "boardTitle": { "type": "string", "maxLength": 40, "default": "Zepit Board" },
+    "ownerName": { "type": "string", "maxLength": 30, "default": "the team" },
+    "theme": { "type": "enum", "values": ["light", "dark"], "default": "dark" }
+  },
+  "healthCheck": {
+    "script": "verify-task-board.js",
+    "type": "rest",
+    "description": "GET /healthz must report archetype=task-board and db up, then a created card must survive a column move and be readable back from a fresh request before being deleted."
+  }
+}
