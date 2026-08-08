@@ -6,7 +6,7 @@ Last updated: **2026-08-07**. Hackathon window: **Aug 8–9, 2026** (48 hrs, sol
 
 | # | Step | Status |
 | --- | --- | --- |
-| 1 | Zerops account + Personal Access Token | **Done** — account `rick-00101` (thakur34980@gmail.com), PAT issued |
+| 1 | Zerops account + Personal Access Token | **Done** — account `rick-00101` ,  |
 | 2 | Install zcli, log in, sanity check | **Done** — zcli v1.1.0, authenticated |
 | 3 | Hand-write one import YAML and provision it manually | **Done** — `realtime-chat` live and behavior-verified |
 | 4 | Zepit backend + job table, hard-coded archetype, full pipeline | **Done — verified live on Zerops 2026-08-07** |
