@@ -1,4 +1,6 @@
 node_modules/
 .env
+PIPELINE.md
+STATUS.md
 # Per-job working copies of templates — generated, never source.
 .jobs/
